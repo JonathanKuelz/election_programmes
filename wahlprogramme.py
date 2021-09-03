@@ -1,3 +1,4 @@
+import argparse
 from collections import Counter
 from functools import reduce
 import operator
@@ -12,7 +13,7 @@ from wordcloud import WordCloud
 
 
 TITLES = {
-    'afd': 'AfD',
+   'afd': 'AfD',
     'cdu_csu': 'CDU/CSU',
     'fdp': 'FDP',
     'gruene': 'BÜNDNIS 90/DIE GRÜNEN',
@@ -20,13 +21,16 @@ TITLES = {
     'spd': 'SPD'
 }
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--save_as', required=True, help='Folder name for the wordcloud images to be saved.')
+parser.add_argument('-n', '--ngrams', required=False, help='Specify ngram lengths', nargs='+', default=[1], type=int)
+
 
 def preprocess(txt: str) -> List[str]:
     remove_words = ['bundestagswahlprogramm', 'f', 'ff', 'kapitel', 'seite']
     german_stop_words = stopwords.words('german') + remove_words
     alpha = re.sub('[\\W_0-9]+', ' ', txt).lower()
     return [tok for tok in alpha.split(' ') if tok not in german_stop_words]
-    # return [tok for tok in alpha.split(' ') if tok not in remove_words]
 
 
 def ngrams(tokens: List[str], n):
@@ -52,26 +56,27 @@ def draw_fighting_words(fw: Dict[str, FightingWords], save: Path) -> None:
         plt.imshow(wc, interpolation="bilinear")
         plt.axis("off")
         plt.title(TITLES[name], loc='center')
-        # Set path to save below, parent folder needs to be created manually (or you need to add a line of code here)
-        plt.savefig(save.joinpath('choose_your_folder').joinpath(name), dpi=500)
+        plt.savefig(save.joinpath(name), dpi=500)
         print('Min z-score for {}: {}'.format(name, min(cloud_data.values())))
 
 
 def main():
-    path = Path('data/')
-    files = list(path.iterdir())
+    args = parser.parse_args()
+    base_path = Path('data/')
+    img_path = base_path.joinpath(args.save_as)
+    img_path.mkdir(exist_ok=True)
+    files = list(base_path.iterdir())
     programs = {p.name.split('.')[0]: preprocess(p.open('r').read()) for p in files if p.is_file()}
     for party, content in programs.items():
         print("Das Programm der {} enthält {} Wörter.".format(party, len(content)))
-    # Adapt n-gram length below
-    words_and_n_grams = {party: ngrams(content, n) for n in range(1, 2) for party, content in programs.items()}
+    words_and_n_grams = {party: ngrams(content, n) for n in args.ngrams for party, content in programs.items()}
     corpora = dict()
     for party, grams in words_and_n_grams.items():
         cnt = Counter(grams)
         terms, weights = list(zip(*cnt.items()))
         corpora[party] = Corpus(terms, weights)
     fighting_words = {party: fighting_words_against_all_others(corpora, party) for party in corpora}
-    draw_fighting_words(fighting_words, path)
+    draw_fighting_words(fighting_words, img_path)
 
 
 if __name__ == '__main__':
